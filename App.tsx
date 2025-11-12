@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { analyzeInventorySheet } from './services/geminiService';
 import { InventoryData } from './types';
 import * as pdfjsLib from 'pdfjs-dist';
+import { PageViewport } from 'pdfjs-dist';
 
 // Configure the PDF.js worker to enable PDF processing in the browser.
 // The worker is loaded from a CDN to match the library in the import map.
@@ -159,10 +160,8 @@ const ResultDisplay: React.FC<{ pagesData: InventoryData[] }> = ({ pagesData }) 
 const NocoDbSettings: React.FC<{
     url: string;
     setUrl: (url: string) => void;
-    token: string;
-    setToken: (token: string) => void;
     disabled: boolean;
-}> = ({ url, setUrl, token, setToken, disabled }) => {
+}> = ({ url, setUrl, disabled }) => {
     const [isOpen, setIsOpen] = useState(false);
 
     return (
@@ -201,20 +200,6 @@ const NocoDbSettings: React.FC<{
                             disabled={disabled}
                         />
                     </div>
-                    <div>
-                        <label htmlFor="nocodb-token" className="block text-sm font-medium text-gray-300 mb-1">
-                            NocoDB API Token (xc-token)
-                        </label>
-                        <input
-                            id="nocodb-token"
-                            type="password"
-                            value={token}
-                            onChange={(e) => setToken(e.target.value)}
-                            placeholder="Enter your API token"
-                            className="w-full bg-gray-900 border border-gray-600 rounded-md px-3 py-2 focus:ring-cyan-500 focus:border-cyan-500"
-                            disabled={disabled}
-                        />
-                    </div>
                 </div>
             )}
         </div>
@@ -230,17 +215,13 @@ export default function App() {
     const [processingStatus, setProcessingStatus] = useState<string | null>(null);
 
     const [nocoDbUrl, setNocoDbUrl] = useState<string>(() => localStorage.getItem('nocoDbUrl') || 'https://purchase.hungvu.vn');
-    const [nocoDbToken, setNocoDbToken] = useState<string>(() => localStorage.getItem('nocoDbToken') || '');
+    const [nocoDbToken, setNocoDbToken] = useState<string>('TbKBT9l7dZZjEvBdWI_21RCyAyvCDD6Ak2mtbdhR');
     const [isSendingToNocoDb, setIsSendingToNocoDb] = useState<boolean>(false);
     const [nocoDbStatus, setNocoDbStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
     useEffect(() => {
         localStorage.setItem('nocoDbUrl', nocoDbUrl);
     }, [nocoDbUrl]);
-
-    useEffect(() => {
-        localStorage.setItem('nocoDbToken', nocoDbToken);
-    }, [nocoDbToken]);
 
     const filePreviewUrl = useMemo(() => {
         if (sourceFile && sourceFile.type.startsWith("image/")) {
@@ -289,7 +270,8 @@ export default function App() {
                     canvas.width = viewport.width;
                     const context = canvas.getContext('2d')!;
 
-                    await page.render({ canvasContext: context, viewport: viewport }).promise;
+                    // FIX: The type definitions for pdfjs-dist seem to require the 'canvas' property on RenderParameters. Adding it to satisfy the type checker.
+                    await page.render({ canvasContext: context, viewport: viewport, canvas: canvas as any }).promise;
                     
                     const pageImageFile = await new Promise<File>((resolve, reject) => {
                         canvas.toBlob(blob => {
@@ -319,7 +301,7 @@ export default function App() {
     
     const handleSendToNocoDb = async () => {
         if (!nocoDbUrl || !nocoDbToken) {
-            setNocoDbStatus({ type: 'error', message: 'Please provide NocoDB URL and API Token in settings.' });
+            setNocoDbStatus({ type: 'error', message: 'NocoDB URL is missing or token is invalid.' });
             return;
         }
         if (extractedPagesData.length === 0) {
@@ -337,13 +319,13 @@ export default function App() {
             if (pageData.table && pageData.table.length > 0) {
                 for (const item of pageData.table) {
                     recordsToSend.push({
-                        "Shelf Location": shelfLocation,
-                        "Floor-Compartment (Location)": item['Tầng-Ngăn (Vị trí)'],
-                        "Product Code": item['Mã SP'],
-                        "Manufacturer": item['Hãng'],
-                        "Type": item['Loại'],
-                        "Quantity": item['Số lượng'],
-                        "Note": item['Ghi chú'],
+                        "Vị trí kệ": shelfLocation,
+                        "Tầng-Ngăn (Vị trí)": item['Tầng-Ngăn (Vị trí)'],
+                        "Mã SP": item['Mã SP'],
+                        "Hãng": item['Hãng'],
+                        "Loại": item['Loại'],
+                        "Số lượng": item['Số lượng'],
+                        "Ghi chú": item['Ghi chú'],
                     });
                 }
             }
@@ -422,7 +404,7 @@ export default function App() {
 
                 <main className="grid lg:grid-cols-2 gap-8">
                     <div className="space-y-6">
-                        <NocoDbSettings url={nocoDbUrl} setUrl={setNocoDbUrl} token={nocoDbToken} setToken={setNocoDbToken} disabled={isLoading || isSendingToNocoDb} />
+                        <NocoDbSettings url={nocoDbUrl} setUrl={setNocoDbUrl} disabled={isLoading || isSendingToNocoDb} />
                         <ImageUploader onFileSelect={handleFileSelect} isProcessing={isLoading} />
                         {sourceFile && (
                              <div className="bg-gray-800 rounded-xl p-4">
