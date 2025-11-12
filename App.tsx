@@ -1,8 +1,7 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { analyzeInventorySheet } from './services/geminiService';
 import { InventoryData } from './types';
 import * as pdfjsLib from 'pdfjs-dist';
-import { PageViewport, RenderParameters } from 'pdfjs-dist/types/src/display/api';
 
 // Configure the PDF.js worker to enable PDF processing in the browser.
 // The worker is loaded from a CDN to match the library in the import map.
@@ -26,10 +25,16 @@ const UploadIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
-const ApiIcon: React.FC<{ className?: string }> = ({ className }) => (
+const SettingsIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5 0-4.5 16.5" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />
     </svg>
+);
+
+const InboxArrowDownIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+  </svg>
 );
 
 
@@ -103,7 +108,7 @@ const ResultDisplay: React.FC<{ pagesData: InventoryData[] }> = ({ pagesData }) 
         <div className="space-y-8 max-h-[70vh] overflow-y-auto pr-2">
             {pagesData.map((data, index) => (
                  <div key={index}>
-                    <h2 className="text-2xl font-bold text-cyan-300 mb-4 border-b-2 border-cyan-500/30 pb-2 sticky top-0 bg-gray-800/50 backdrop-blur-sm z-10">
+                    <h2 className="text-2xl font-bold text-cyan-300 mb-4 border-b-2 border-cyan-500/30 pb-2 sticky top-0 bg-gray-800/80 backdrop-blur-sm z-10">
                         Page {index + 1} Results
                     </h2>
                      <div className="space-y-6">
@@ -151,132 +156,67 @@ const ResultDisplay: React.FC<{ pagesData: InventoryData[] }> = ({ pagesData }) 
     );
 };
 
-const ApiUsageDisplay: React.FC = () => {
-    const codeSnippet = `
-// n8n Code Node Snippet
-// This code runs in a Node.js environment.
-// It expects an input item with a binary property named 'data' representing the image file.
-// You can get this from a previous node like 'HTTP Request' or 'Read Binary File'.
+const NocoDbSettings: React.FC<{
+    url: string;
+    setUrl: (url: string) => void;
+    token: string;
+    setToken: (token: string) => void;
+    disabled: boolean;
+}> = ({ url, setUrl, token, setToken, disabled }) => {
+    const [isOpen, setIsOpen] = useState(false);
 
-// 1. Add '@google/genai' to NODE_FUNCTION_ALLOW_EXTERNAL in your n8n env variables.
-// 2. Create a 'Header Auth' credential in n8n named 'geminiApi' with key 'apiKey'.
-
-const { GoogleGenAI, Type } = require('@google/genai');
-
-const credentials = this.getCredentials('geminiApi');
-const API_KEY = credentials.apiKey;
-
-if (!API_KEY) {
-  throw new Error("Gemini API key is not set in 'geminiApi' credentials.");
-}
-
-const ai = new GoogleGenAI({ apiKey: API_KEY });
-
-const inputItem = this.getInputData()[0];
-const binaryData = inputItem.binary.data;
-
-if (!binaryData) {
-    throw new Error("No binary data found. Ensure a previous node provides an image in the 'data' property.");
-}
-
-const imagePart = {
-  inlineData: {
-    data: binaryData.data.toString('base64'),
-    mimeType: binaryData.mimeType,
-  },
-};
-
-const prompt = \`You are an expert OCR system specialized in extracting structured data from Vietnamese warehouse inventory forms ('Phiếu kiểm kho'). Analyze the provided image, which contains both printed and handwritten text. Extract all header information and all rows from the table. Your output MUST be a single, valid JSON object that strictly adheres to the provided schema. Do not include any explanatory text, markdown formatting, or any characters outside of the JSON object. For empty or unreadable fields, use a null value.\`;
-
-const inventorySchema = {
-    type: Type.OBJECT,
-    properties: {
-        'Kho': { type: Type.STRING, description: "Warehouse code", nullable: true },
-        'Tầng': { type: Type.STRING, description: "Floor number", nullable: true },
-        'Vị trí/kệ': { type: Type.STRING, description: "Shelf location", nullable: true },
-        'Ngày kiểm kho': { type: Type.STRING, description: "Date of inventory check (DD/MM/YYYY)", nullable: true },
-        'Người kiểm': { type: Type.STRING, description: "Name of the inspector", nullable: true },
-        'Người duyệt': { type: Type.STRING, description: "Name of the approver", nullable: true },
-        'table': {
-            type: Type.ARRAY,
-            description: "List of inventory items.",
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    'STT': { type: Type.NUMBER, description: "Sequence number", nullable: true },
-                    'Tầng-Ngăn (Vị trí)': { type: Type.STRING, description: "Sub-location/shelf", nullable: true },
-                    'Mã SP': { type: Type.STRING, description: "Product Code", nullable: true },
-                    'Hãng': { type: Type.STRING, description: "Brand", nullable: true },
-                    'Loại': { type: Type.STRING, description: "Type", nullable: true },
-                    'Số lượng': { type: Type.NUMBER, description: "Quantity", nullable: true },
-                    'Ghi chú': { type: Type.STRING, description: "Notes", nullable: true },
-                },
-                 required: ['STT', 'Mã SP', 'Số lượng']
-            }
-        }
-    },
-    required: ['Kho', 'Tầng', 'Vị trí/kệ', 'Ngày kiểm kho', 'Người kiểm', 'table']
-};
-
-
-try {
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: { parts: [imagePart, { text: prompt }] },
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: inventorySchema,
-        }
-    });
-
-    const jsonText = response.text.trim();
-    const data = JSON.parse(jsonText);
-
-    // Return the structured data as the output of the n8n node
-    return [{ json: data }];
-
-} catch (error) {
-    console.error("Error analyzing image with Gemini:", error);
-    if (error.message) {
-      throw new Error(\`Failed to analyze image: \${error.message}\`);
-    }
-    throw new Error("An unknown error occurred during image analysis.");
-}
-`.trim();
-
-    const [copyButtonText, setCopyButtonText] = useState('Copy Code');
-
-    const handleCopy = () => {
-        navigator.clipboard.writeText(codeSnippet).then(() => {
-            setCopyButtonText('Copied!');
-            setTimeout(() => setCopyButtonText('Copy Code'), 2000);
-        }).catch(() => {
-            setCopyButtonText('Failed!');
-            setTimeout(() => setCopyButtonText('Copy Code'), 2000);
-        });
-    };
-    
     return (
-        <div className="mt-8 bg-gray-800/50 rounded-xl p-6">
-            <h2 className="text-2xl font-bold text-cyan-300 mb-4">Using OCR in n8n / Node.js</h2>
-            <div className="space-y-4 text-gray-300">
-                <p>Follow these steps to integrate this OCR functionality into your n8n workflow:</p>
-                <ol className="list-decimal list-inside space-y-2 pl-4">
-                    <li><span className="font-semibold">Enable External Modules:</span> In your n8n instance's environment variables, add <code className="bg-gray-900 px-1 py-0.5 rounded text-sm text-cyan-300">@google/genai</code> to your <code className="bg-gray-900 px-1 py-0.5 rounded text-sm text-cyan-300">NODE_FUNCTION_ALLOW_EXTERNAL</code> list.</li>
-                    <li><span className="font-semibold">Add Credentials:</span> In n8n, go to Credentials and add a new 'Header Auth' credential. Name it <code className="bg-gray-900 px-1 py-0.5 rounded text-sm text-cyan-300">geminiApi</code>. For the credential values, use <code className="bg-gray-900 px-1 py-0.5 rounded text-sm text-cyan-300">apiKey</code> as the Name and your Gemini API key as the Value.</li>
-                    <li><span className="font-semibold">Setup Workflow:</span> Your workflow must provide an image to the Code node. For example, use the 'HTTP Request' node to download an image, making sure to set 'Response Format' to 'File'. The Code node will receive this as binary data.</li>
-                    <li><span className="font-semibold">Use the Code Node:</span> Create a 'Code' node in your workflow and paste the code below.</li>
-                </ol>
-            </div>
-            <div className="relative bg-gray-900 rounded-lg mt-6">
-                <button 
-                    onClick={handleCopy}
-                    className="absolute top-2 right-2 bg-gray-700 hover:bg-cyan-600 text-white text-xs font-bold py-1 px-3 rounded-md transition-colors"
+        <div className="bg-gray-800/50 rounded-xl">
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="w-full flex justify-between items-center p-4 text-left font-semibold"
+            >
+                <div className="flex items-center gap-3">
+                    <SettingsIcon className="w-6 h-6 text-cyan-400" />
+                    <span>NocoDB Integration Settings</span>
+                </div>
+                <svg
+                    className={`w-5 h-5 transition-transform ${isOpen ? 'transform rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
                 >
-                    {copyButtonText}
-                </button>
-                <pre className="p-4 text-sm text-gray-200 overflow-x-auto rounded-lg"><code className="language-javascript">{codeSnippet}</code></pre>
-            </div>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </button>
+            {isOpen && (
+                <div className="p-4 border-t border-gray-700 space-y-4">
+                    <div>
+                        <label htmlFor="nocodb-url" className="block text-sm font-medium text-gray-300 mb-1">
+                            NocoDB Base URL
+                        </label>
+                        <input
+                            id="nocodb-url"
+                            type="text"
+                            value={url}
+                            onChange={(e) => setUrl(e.target.value)}
+                            placeholder="https://your.nocodb.instance"
+                            className="w-full bg-gray-900 border border-gray-600 rounded-md px-3 py-2 focus:ring-cyan-500 focus:border-cyan-500"
+                            disabled={disabled}
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="nocodb-token" className="block text-sm font-medium text-gray-300 mb-1">
+                            NocoDB API Token (xc-token)
+                        </label>
+                        <input
+                            id="nocodb-token"
+                            type="password"
+                            value={token}
+                            onChange={(e) => setToken(e.target.value)}
+                            placeholder="Enter your API token"
+                            className="w-full bg-gray-900 border border-gray-600 rounded-md px-3 py-2 focus:ring-cyan-500 focus:border-cyan-500"
+                            disabled={disabled}
+                        />
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -287,8 +227,20 @@ export default function App() {
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const [extractedPagesData, setExtractedPagesData] = useState<InventoryData[]>([]);
-    const [showApiUsage, setShowApiUsage] = useState<boolean>(false);
     const [processingStatus, setProcessingStatus] = useState<string | null>(null);
+
+    const [nocoDbUrl, setNocoDbUrl] = useState<string>(() => localStorage.getItem('nocoDbUrl') || 'https://purchase.hungvu.vn');
+    const [nocoDbToken, setNocoDbToken] = useState<string>(() => localStorage.getItem('nocoDbToken') || '');
+    const [isSendingToNocoDb, setIsSendingToNocoDb] = useState<boolean>(false);
+    const [nocoDbStatus, setNocoDbStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+
+    useEffect(() => {
+        localStorage.setItem('nocoDbUrl', nocoDbUrl);
+    }, [nocoDbUrl]);
+
+    useEffect(() => {
+        localStorage.setItem('nocoDbToken', nocoDbToken);
+    }, [nocoDbToken]);
 
     const filePreviewUrl = useMemo(() => {
         if (sourceFile && sourceFile.type.startsWith("image/")) {
@@ -299,6 +251,7 @@ export default function App() {
 
     const handleFileSelect = (file: File) => {
         setError(null);
+        setNocoDbStatus(null);
         setExtractedPagesData([]);
         setSourceFile(file);
     };
@@ -310,6 +263,7 @@ export default function App() {
         }
         setIsLoading(true);
         setError(null);
+        setNocoDbStatus(null);
         setExtractedPagesData([]);
         setProcessingStatus('Starting analysis...');
 
@@ -328,17 +282,14 @@ export default function App() {
                     setProcessingStatus(`Analyzing page ${i} of ${numPages}...`);
                     
                     const page = await pdf.getPage(i);
-                    const viewport = page.getViewport({ scale: 2.0 }); // Higher scale for better quality
+                    const viewport = page.getViewport({ scale: 2.0 });
                     
                     const canvas = document.createElement('canvas');
                     canvas.height = viewport.height;
                     canvas.width = viewport.width;
                     const context = canvas.getContext('2d')!;
 
-                    // Fix: The installed pdfjs-dist types seem to require a 'canvas' property on RenderParameters.
-                    // We provide it to satisfy the compiler, though modern versions of pdf.js would only
-                    // need 'canvasContext'.
-                    await page.render({ canvasContext: context, viewport: viewport, canvas: canvas } as RenderParameters).promise;
+                    await page.render({ canvasContext: context, viewport: viewport }).promise;
                     
                     const pageImageFile = await new Promise<File>((resolve, reject) => {
                         canvas.toBlob(blob => {
@@ -366,15 +317,92 @@ export default function App() {
         }
     }, [sourceFile]);
     
+    const handleSendToNocoDb = async () => {
+        if (!nocoDbUrl || !nocoDbToken) {
+            setNocoDbStatus({ type: 'error', message: 'Please provide NocoDB URL and API Token in settings.' });
+            return;
+        }
+        if (extractedPagesData.length === 0) {
+            setNocoDbStatus({ type: 'info', message: 'No data to send.' });
+            return;
+        }
+
+        setIsSendingToNocoDb(true);
+        setNocoDbStatus({ type: 'info', message: 'Preparing and sending data to NocoDB...' });
+
+        const recordsToSend: Record<string, any>[] = [];
+        for (const pageData of extractedPagesData) {
+            const shelfLocation = `${pageData.Kho || 'N/A'}.${pageData.Tầng || 'N/A'}.${pageData['Vị trí/kệ'] || 'N/A'}`;
+
+            if (pageData.table && pageData.table.length > 0) {
+                for (const item of pageData.table) {
+                    recordsToSend.push({
+                        "Shelf Location": shelfLocation,
+                        "Floor-Compartment (Location)": item['Tầng-Ngăn (Vị trí)'],
+                        "Product Code": item['Mã SP'],
+                        "Manufacturer": item['Hãng'],
+                        "Type": item['Loại'],
+                        "Quantity": item['Số lượng'],
+                        "Note": item['Ghi chú'],
+                    });
+                }
+            }
+        }
+        
+        if (recordsToSend.length === 0) {
+            setNocoDbStatus({ type: 'info', message: 'No inventory items found in the document to send.' });
+            setIsSendingToNocoDb(false);
+            return;
+        }
+
+        try {
+            // The table name is provided in the prompt: mvy7zfz17dzksr3
+            const response = await fetch(`${nocoDbUrl}/api/v2/tables/mvy7zfz17dzksr3/records`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'xc-token': nocoDbToken,
+                },
+                body: JSON.stringify(recordsToSend),
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                try {
+                    const errorData = JSON.parse(errorText);
+                    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                } catch {
+                     throw new Error(errorText || `HTTP error! status: ${response.status}`);
+                }
+            }
+
+            await response.json();
+            setNocoDbStatus({ type: 'success', message: `Successfully sent ${recordsToSend.length} records to NocoDB!` });
+
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : "An unexpected error occurred.";
+            setNocoDbStatus({ type: 'error', message: `Failed to send data: ${errorMessage}` });
+        } finally {
+            setIsSendingToNocoDb(false);
+        }
+    };
+    
     const handleReset = () => {
         setSourceFile(null);
         setExtractedPagesData([]);
         setError(null);
+        setNocoDbStatus(null);
         setIsLoading(false);
         setProcessingStatus(null);
         if (filePreviewUrl) {
             URL.revokeObjectURL(filePreviewUrl);
         }
+    };
+
+    const statusColors = {
+        success: 'text-green-400 bg-green-900/50',
+        error: 'text-red-400 bg-red-900/50',
+        info: 'text-cyan-400 bg-cyan-900/50',
     };
 
     return (
@@ -390,17 +418,11 @@ export default function App() {
                     <p className="mt-2 text-lg text-gray-400">
                         Powered by Gemini - Upload a document to extract structured data.
                     </p>
-                    <button
-                        onClick={() => setShowApiUsage(!showApiUsage)}
-                        className="mt-4 inline-flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-cyan-300 font-semibold py-2 px-4 rounded-lg transition-colors"
-                    >
-                        <ApiIcon className="w-5 h-5" />
-                        {showApiUsage ? 'Hide API for n8n' : 'Show API for n8n'}
-                    </button>
                 </header>
 
                 <main className="grid lg:grid-cols-2 gap-8">
                     <div className="space-y-6">
+                        <NocoDbSettings url={nocoDbUrl} setUrl={setNocoDbUrl} token={nocoDbToken} setToken={setNocoDbToken} disabled={isLoading || isSendingToNocoDb} />
                         <ImageUploader onFileSelect={handleFileSelect} isProcessing={isLoading} />
                         {sourceFile && (
                              <div className="bg-gray-800 rounded-xl p-4">
@@ -416,22 +438,39 @@ export default function App() {
                             </div>
                         )}
 
-                        <div className="flex space-x-4">
-                            <button
-                                onClick={handleAnalyze}
-                                disabled={!sourceFile || isLoading}
-                                className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300 flex items-center justify-center"
-                            >
-                                {isLoading ? 'Analyzing...' : 'Analyze Document'}
-                            </button>
-                             <button
-                                onClick={handleReset}
-                                disabled={isLoading}
-                                className="w-full bg-gray-600 hover:bg-gray-700 disabled:bg-gray-800 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300"
-                            >
-                                Reset
-                            </button>
+                        <div className="flex flex-col space-y-4">
+                            <div className="flex space-x-4">
+                                <button
+                                    onClick={handleAnalyze}
+                                    disabled={!sourceFile || isLoading}
+                                    className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300 flex items-center justify-center"
+                                >
+                                    {isLoading ? 'Analyzing...' : 'Analyze Document'}
+                                </button>
+                                 <button
+                                    onClick={handleReset}
+                                    disabled={isLoading}
+                                    className="w-full bg-gray-600 hover:bg-gray-700 disabled:bg-gray-800 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300"
+                                >
+                                    Reset
+                                </button>
+                            </div>
+                            {extractedPagesData.length > 0 && (
+                                <button
+                                    onClick={handleSendToNocoDb}
+                                    disabled={isLoading || isSendingToNocoDb}
+                                    className="w-full bg-teal-600 hover:bg-teal-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-colors duration-300 flex items-center justify-center gap-2"
+                                >
+                                    <InboxArrowDownIcon className="w-5 h-5" />
+                                    {isSendingToNocoDb ? 'Sending...' : 'Send to NocoDB'}
+                                </button>
+                            )}
                         </div>
+                         {nocoDbStatus && (
+                            <div className={`text-center p-3 rounded-lg text-sm ${statusColors[nocoDbStatus.type]}`}>
+                                {nocoDbStatus.message}
+                            </div>
+                        )}
                     </div>
 
                     <div className="bg-gray-800/50 rounded-xl p-6 min-h-[300px] flex flex-col justify-center">
@@ -451,7 +490,6 @@ export default function App() {
                     </div>
                 </main>
 
-                {showApiUsage && <ApiUsageDisplay />}
             </div>
         </div>
     );
