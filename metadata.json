@@ -1,0 +1,5 @@
+{
+  "name": "Inventory Sheet OCR",
+  "description": "Upload an image of a Vietnamese inventory check sheet to extract its data into a structured JSON format using Gemini.",
+  "requestFramePermissions": []
+}
